@@ -2,6 +2,7 @@
 """
 import torchvision
 
+
 class TransformsSimCLR:
     """
     A stochastic data augmentation module that transforms any given data example randomly

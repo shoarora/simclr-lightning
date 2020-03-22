@@ -4,6 +4,8 @@ from torch import nn
 from nt_xent import NT_Xent
 import torch
 from pytorch_lamb import Lamb
+import math
+from torch.optim.lr_scheduler import LambdaLR
 
 
 class SimCLR(pl.LightningModule):
@@ -46,6 +48,12 @@ class SimCLR(pl.LightningModule):
     def training_step(self, batch, idx):
         loss = self._encode_batch(batch)
         tensorboard_logs = {"train_loss": loss}
+
+        # log learning rate.
+        scheduler = self.trainer.lr_schedulers[0]['scheduler']
+        for i, lr in enumerate(scheduler.get_lr()):
+            tensorboard_logs[f'lr_{i}'] = lr
+
         return {"loss": loss, "tensorboard_logs": tensorboard_logs}
 
     def validation_step(self, batch, idx):
@@ -58,8 +66,45 @@ class SimCLR(pl.LightningModule):
         return {"val_loss": mean_val_loss}
 
     def configure_optimizers(self):
-        optim = Lamb(self.parameters(), lr=0.00001, weight_decay=0.00005)
-        return optim
+        no_decay = ["batch_normalization", "bias"]
+        optimizer_grouped_parameters = [
+            {
+                "params": [
+                    p for n, p in self.generator.named_parameters()
+                    if not any(nd in n for nd in no_decay)
+                ] + [
+                    p for n, p in self.discriminator.named_parameters()
+                    if not any(nd in n for nd in no_decay)
+                ],
+                "weight_decay":
+                self.config.weight_decay,
+            },
+            {
+                "params": [
+                    p for n, p in self.generator.named_parameters()
+                    if any(nd in n for nd in no_decay)
+                ] + [
+                    p for n, p in self.discriminator.named_parameters()
+                    if any(nd in n for nd in no_decay)
+                ],
+                "weight_decay":
+                0.0
+            },
+        ]
+        learning_rate = 0.3 * self.hparams.batch_size / 256
+        optim = Lamb(optimizer_grouped_parameters, lr=learning_rate, weight_decay=10e-6)
+
+        total_steps = int(self.hparams.max_epochs * self.hparams.batch_size)
+        warmup_steps = int(0.1 * total_steps)
+
+        lr_scheduler = get_cosine_schedule_with_warmup(optim, warmup_steps, total_steps)
+
+        scheduler_config = {
+            'scheduler': lr_scheduler,
+            'interval': 'step'
+        }
+
+        return [optim], [scheduler_config]
 
     def add_model_specifc_args(parser):
         parser.add_argument(
@@ -80,3 +125,20 @@ def mask_correlated_samples(args):
         mask[i, args.batch_size + i] = 0
         mask[args.batch_size + i, i] = 0
     return mask
+
+
+def get_cosine_schedule_with_warmup(optimizer, num_warmup_steps, num_training_steps, num_cycles=0.5, last_epoch=-1):
+    """ Create a schedule with a learning rate that decreases following the
+    values of the cosine function between 0 and `pi * cycles` after a warmup
+    period during which it increases linearly between 0 and 1.
+
+    From github.com/huggingface/transformers
+    """
+
+    def lr_lambda(current_step):
+        if current_step < num_warmup_steps:
+            return float(current_step) / float(max(1, num_warmup_steps))
+        progress = float(current_step - num_warmup_steps) / float(max(1, num_training_steps - num_warmup_steps))
+        return max(0.0, 0.5 * (1.0 + math.cos(math.pi * float(num_cycles) * 2.0 * progress)))
+
+    return LambdaLR(optimizer, lr_lambda, last_epoch)

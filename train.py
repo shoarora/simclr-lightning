@@ -1,9 +1,13 @@
 from argparse import ArgumentParser
-from model import SimCLR
+
 import pytorch_lightning as pl
-from transforms import TransformsSimCLR
-import torchvision
 import torch
+import torchvision
+
+from model import SimCLR
+from transforms import TransformsSimCLR
+
+from datasets import ImagePathsDataset
 
 
 def get_parser():
@@ -13,7 +17,10 @@ def get_parser():
     parser.add_argument("--num_tpu_cores", type=int, default=None)
 
     parser.add_argument(
-        "--dataset_type", type=str, default="cifar10", choices=["cifar10", "folder"]
+        "--dataset_type",
+        type=str,
+        default="cifar10",
+        choices=["cifar10", "folder", "paths"],
     )
     parser.add_argument("--dataset_path", type=str, default=None)
     parser.add_argument("--num_workers", type=int, default=8)
@@ -25,10 +32,12 @@ def get_dataloaders(args):
         train = torchvision.datasets.CIFAR10(
             args.dataset_path, train=True, download=True, transform=TransformsSimCLR()
         )
-    else:
+    elif args.dataset_type == "folder":
         train = torchvision.datasets.ImageFolder(
             args.dataset_path, transform=TransformsSimCLR()
         )
+    elif args.dataset_type == "paths":
+        train = ImagePathsDataset(args.dataset_path, transforms=TransformsSimCLR())
 
     loader = torch.utils.data.DataLoader(
         train, batch_size=args.batch_size, num_workers=args.num_workers, drop_last=True
@@ -46,7 +55,9 @@ def main():
 
     model = SimCLR(args)
     trainer = pl.Trainer(
-        max_epochs=args.max_epochs, gpus=args.gpus, num_tpu_cores=args.num_tpu_cores,
+        max_epochs=args.max_epochs,
+        gpus=args.gpus,
+        num_tpu_cores=args.num_tpu_cores,
         val_check_percent=0.01,
     )
 

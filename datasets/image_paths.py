@@ -21,7 +21,7 @@ class ImagePathsDataset(Dataset):
         if self.transform:
             img = self.transform(img)
 
-        return img, None
+        return img, 0
 
 
 def pil_loader(path):

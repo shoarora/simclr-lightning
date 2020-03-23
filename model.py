@@ -24,8 +24,7 @@ class SimCLR(pl.LightningModule):
             nn.Linear(self.n_features, self.hparams.embedding_size, bias=False),
         )
 
-        mask = mask_correlated_samples(hparams)
-        self.criterion = NT_Xent(hparams.batch_size, hparams.temperature, mask)
+        self.criterion = NT_Xent(hparams.temperature)
 
     def forward(self, x):
         h = self.encoder(x)
@@ -50,9 +49,9 @@ class SimCLR(pl.LightningModule):
         tensorboard_logs = {"train_loss": loss}
 
         # log learning rate.
-        scheduler = self.trainer.lr_schedulers[0]["scheduler"]
-        for i, lr in enumerate(scheduler.get_lr()):
-            tensorboard_logs[f"lr_{i}"] = lr
+        # scheduler = self.trainer.lr_schedulers[0]["scheduler"]
+        # for i, lr in enumerate(scheduler.get_lr()):
+        #     tensorboard_logs[f"lr_{i}"] = lr
 
         return {"loss": loss, "tensorboard_logs": tensorboard_logs}
 
@@ -108,15 +107,6 @@ class SimCLR(pl.LightningModule):
         parser.add_argument("--batch_size", type=int, default=32)
         parser.add_argument("--temperature", type=float, default=0.5)
         return parser
-
-
-def mask_correlated_samples(args):
-    mask = torch.ones((args.batch_size * 2, args.batch_size * 2), dtype=bool)
-    mask = mask.fill_diagonal_(0)
-    for i in range(args.batch_size):
-        mask[i, args.batch_size + i] = 0
-        mask[args.batch_size + i, i] = 0
-    return mask
 
 
 def get_cosine_schedule_with_warmup(

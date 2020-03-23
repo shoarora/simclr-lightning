@@ -28,20 +28,22 @@ def get_parser():
     return parser
 
 
-def get_dataloaders(args):
+def get_dataloaders(args, collate_fn=None):
     if args.dataset_type == "cifar10":
         train = torchvision.datasets.CIFAR10(
             args.dataset_path, train=True, download=True, transform=TransformsSimCLR()
         )
     elif args.dataset_type == "folder":
-        train = torchvision.datasets.ImageFolder(
-            args.dataset_path, transform=TransformsSimCLR()
-        )
+        train = torchvision.datasets.ImageFolder(args.dataset_path, transform=TransformsSimCLR())
     elif args.dataset_type == "paths":
-        train = ImagePathsDataset(args.dataset_path, transforms=TransformsSimCLR())
+        train = ImagePathsDataset(args.dataset_path, transform=TransformsSimCLR())
 
     loader = torch.utils.data.DataLoader(
-        train, batch_size=args.batch_size, num_workers=args.num_workers, drop_last=True
+        train,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+        drop_last=True,
+        collate_fn=collate_fn,
     )
     return loader
 
